@@ -1,25 +1,14 @@
 <template>
   <div class="home">
-    <div v-for="(item, itemIndex) in specList" :key="item.id" class="row">
-      <div class="label">{{ item.value }}：</div>
-      <div class="content">
-        <div
-          v-for="(spec, specIndex) in item.spec"
-          :key="spec.id"
-          class="spec"
-          :class="{ 'spec_active' : spec.selected, 'spec_disabled': spec.disabled }"
-          @click="handleSelectSpec(itemIndex, specIndex)"
-        >
-          {{ spec.value }}
-        </div>
-      </div>
-    </div>
+    <sku :sku-data="skuList" :spec-data="specList" @on-change="onSkuChange" @on-select="onSkuSelect" />
   </div>
 </template>
 
 <script>
+import sku from '@/components/sku'
   export default {
     name: 'Home',
+    components: { sku },
     data() {
       return {
         skuData: [
@@ -328,17 +317,14 @@
             'image': null,
             'store_id': 2
           }
-        ],
-        selectedSpec: [],
-        specList: [],
-        hasSkuList: [], // 可用的sku例表
-        valueIdSortAndIndex: []
+        ]
       }
     },
     computed: {
+      // 过滤sku列表，保留库存大于0的作为可选项
       skuList() {
         const data = []
-        this.skuData.forEach(item => {
+        this.skuData.filter(item => item.stock > 0).forEach(item => {
           const option = {
             ...item,
             spec: item.spec.value.map((spec, index) => ({
@@ -350,148 +336,26 @@
           data.push(option)
         })
         return data
+      },
+      specList() {
+        return this.specData.map(items => ({
+          id: +items.key,
+          value: items.key_name,
+          spec: items.value.map((el, index) => ({
+            id: +items.value[index],
+            value: items.value_name[index]
+          }))
+        }))
       }
     },
     created() {
-      this.init()
-      this.getSpecList()
-      this.initSpec()
     },
     methods: {
-      init() {
-        let valueIdSortAndIndex = [];
-        this.hasSkuList = this.skuList.map((item) => {
-          let valueIdSort = []
-          item.spec.map(spec => {
-            valueIdSort.push(spec.value_id)
-          })
-          /*将sku规格值的ID，组成一个数组并且字典排序，以及将该sku所对应的index存入数组，供点击后查询sku*/
-          valueIdSortAndIndex.push({ valueIdSort: valueIdSort.sort() })
-          return item.spec
-        })
-        this.valueIdSortAndIndex = valueIdSortAndIndex
+      onSkuChange(res) {
+        console.log(res)
       },
-      // 初始化 判断 是否有库存
-      initSpec() {
-        let currentSkuList = this.hasSkuList.flat(Infinity) // 扁平化数组
-        this.specList.forEach(items => {
-          items.spec.forEach(item => {
-            for (let i = 0, len = currentSkuList.length; i < len; i++) {
-              if (item.id === currentSkuList[i].value_id) {
-                item.disabled = false
-                break
-              }
-            }
-          })
-        })
-      },
-      getSpecList() {
-        const data = []
-        this.specData.forEach(items => {
-          const option = {
-            id: +items.key,
-            value: items.key_name,
-            spec: items.value.map((el, index) => ({
-              id: +items.value[index],
-              value: items.value_name[index],
-              selected: false,
-              disabled: true
-            }))
-          }
-          data.push(option)
-        })
-        this.specList = data
-      },
-      // 选择每个规格，判断对应的库存
-      handleSelectSpec(rowIndex, colIndex) {
-        let selectedList = this.selectedSpec // 已选规格
-        const rowItem = this.specList[rowIndex]
-        const colItem = rowItem.spec[colIndex]
-
-        if (colItem.disabled) {
-          return
-        }
-
-        // 处理selected的逻辑
-        if (!colItem.selected) {
-          this.specList[rowIndex].spec.forEach(item => {
-            item.selected = false
-          })
-          this.specList[rowIndex].spec[colIndex].selected = true
-          // 选中项中有同组元素，替换
-          selectedList.forEach((item, index) => {
-            if (item.rowIndex === rowIndex) {
-              selectedList.splice(index, 1)
-            }
-          })
-          selectedList.push({ rowId: rowItem.id, colId: colItem.id, rowIndex, colIndex })
-        } else {
-          // 取消选中并删除选中项中数据
-          this.specList[rowIndex].spec[colIndex].selected = false
-          selectedList.forEach((item, index) => {
-            if (item.colId === colItem.id && item.rowId === rowItem.id) {
-              selectedList.splice(index, 1)
-            }
-          })
-        }
-
-        // 取出行的ID
-        const selectedRowIds = selectedList.map(item => item.rowId)
-
-        // 处理disabled的逻辑
-        if (selectedList.length === 0) {
-          // 选中属性为空，重新初始化数据
-          this.initSpec()
-        } else {
-          //拿所有规格属性（即specList）的每一项分别与已选中的数据（即selectItemList）的每一项，组成一个比较项，与现有库存比较，找到存在的可点项
-          this.specList.forEach((row, rowIndex) => {
-            row.spec.forEach((col, colIndex) => {
-              // 将没有选择的规格全部设置为禁用
-              if (!col.selected) {
-                col.disabled = true
-              }
-              // 本次循环数据
-              let pushData = { rowId: row.id, colId: col.id, rowIndex: rowIndex, colIndex: colIndex }
-              if (selectedRowIds.indexOf(row.id) > -1) {
-                // 当前循环的规格的组ID在已选规格中，删除同组规格，用当前规格替换后去与库存比较
-                const sel = selectedList.slice() // 用一个新变量接受数据，防止修改源数据
-                const indexSplice = selectedRowIds.indexOf(row.id)
-                sel.splice(indexSplice, 1, pushData)
-                this.optionsHandle(sel, pushData)
-              } else {
-                //  当前循环规格组ID不在已选规格中，添加当前规格到复制出来的已选数组中，循环比较
-                const sel = selectedList.slice()
-                sel.push(pushData)
-                this.optionsHandle(sel, pushData)
-              }
-            })
-          })
-        }
-      },
-      optionsHandle(colArr, pushData) {
-        // 将当前比较项的属性ID提取
-        const colIds = colArr.map(item => item.colId)
-        // 在现有库存中查找是否有可选项，可选的置为可点击
-        this.valueIdSortAndIndex.map(item => {
-          if (this.isContained(item.valueIdSort, colIds)) {
-            this.specList[pushData.rowIndex].spec[pushData.colIndex].disabled = false
-          }
-        })
-      },
-      /*
-      * 判断arr1数组是否 全 包含arr2数组
-      * */
-      isContained(arr1, arr2) {
-        if(!(arr1 instanceof Array) || !(arr2 instanceof Array) || (arr1.length < arr2.length)) {
-          return false
-        }
-        let arr1Str = arr1.toString()
-        for (let i = 0, len = arr2.length; i < len; i++) {
-          if (arr1Str.indexOf(arr2[i]) < 0) {
-            return false
-          }
-        }
-        return true
+      onSkuSelect(res) {
+        console.log(res)
       }
     }
   }
