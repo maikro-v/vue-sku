@@ -55,7 +55,14 @@
     watch: {
       specData: {
         deep: true,
-        handler(newValue, oldValue) {
+        handler() {
+          this.initSpec()
+        }
+      },
+      skuList: {
+        deep: true,
+        handler() {
+          this.init()
           this.initSpec()
         }
       }
